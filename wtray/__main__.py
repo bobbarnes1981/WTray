@@ -1,14 +1,15 @@
+"""Main WTray module"""
 import json
-import pystray
-import requests
 import select
 import socket
 import threading
-import time
+import pystray
+import requests
 
 from PIL import Image
 
 class Node(object):
+    """Class representing the node udp information"""
     node_types = {
         0: "Undefined",
         82: "ESP8266",
@@ -20,20 +21,25 @@ class Node(object):
     def __init__(self, data):
         self.ip = f"{data[2]}.{data[3]}.{data[4]}.{data[5]}"
         self.name = data[6:38].decode('utf-8')
-        self.type = self.node_types[data[38]] if data[38] in self.node_types else data[38]
+        type_id_state = data[38]
+        self.state = type_id_state & 0x80 == 0x80
+        type_id = type_id_state & 0x7F
+        self.type = self.node_types[type_id] if type_id in self.node_types else type_id
         self.id = data[39]
         self.version = data[40] | (data[41] << 8) | (data[42]<< 16) | (data[43] << 24)
     def __eq__(self, other):
         if not isinstance(other, Node):
             return False
-        return self.ip == other.ip and self.name == other.name and self.type == other.type and self.id == other.id and self.version == other.version
+        return self.ip == other.ip and self.name == other.name and self.state == other.state and self.type == other.type and self.id == other.id and self.version == other.version
 
 class Discovery(threading.Thread):
+    """Thread to listen to node udp messages"""
     def __init__(self):
         threading.Thread.__init__(self)
         self._running = False
         self.nodes= {}
     def stop(self):
+        """Stop the thread"""
         self._running = False
     def run(self, *args, **kwargs):
         self._running = True
@@ -49,20 +55,21 @@ class Discovery(threading.Thread):
             ready = select.select([client], [], [], socket_timeout)
             if ready[0]:
                 data, addr = client.recvfrom(1024)
-                token = data[0] # 255
-                id = data[1] # 1
-                if token == 255 and id == 1:
+                msg_token = data[0] # 255
+                msg_id = data[1] # 1
+                if msg_token == 255 and msg_id == 1:
                     node = Node(data)
                     if node.id not in self.nodes:
                         print("new node")
                         self.nodes[node.id] = node
-                        print(f"Name: {node.name} IP: {node.ip} Node: {node.type} {node.id} Version: {node.version}")
+                        print(f"Name: {node.name} IP: {node.ip} Node: {node.type} {node.id} Version: {node.version} State: {node.state}")
                     if self.nodes[node.id] != node:
                         print("update node")
                         self.nodes[node.id] = node
-                        print(f"Name: {node.name} IP: {node.ip} Node: {node.type} {node.id} Version: {node.version}")
+                        print(f"Name: {node.name} IP: {node.ip} Node: {node.type} {node.id} Version: {node.version} State: {node.state}")
 
 class WTray(object):
+    """WLED System Tray"""
     def __init__(self, url):
         self.url = url
         self.state = False
@@ -108,6 +115,7 @@ class WTray(object):
         self.discovery.stop()
         icon.stop()
     def run(self):
+        """Run the application"""
         self.icon.run()
 
 
