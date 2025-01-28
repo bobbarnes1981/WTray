@@ -23,7 +23,10 @@ class Node(object):
         self.type = self.node_types[data[38]] if data[38] in self.node_types else data[38]
         self.id = data[39]
         self.version = data[40] | (data[41] << 8) | (data[42]<< 16) | (data[43] << 24)
-
+    def __eq__(self, other):
+        if not isinstance(other, Node):
+            return False
+        return self.ip == other.ip and self.name == other.name and self.type == other.type and self.id == other.id and self.version == other.version
 
 class Discovery(threading.Thread):
     def __init__(self):
@@ -50,10 +53,14 @@ class Discovery(threading.Thread):
                 id = data[1] # 1
                 if token == 255 and id == 1:
                     node = Node(data)
-                    self.nodes[node.id] = node
-                    print("msg")
-                    print(data)
-                    print(f"Name: {node.name} IP: {node.ip} Node: {node.type} {node.id} Version: {node.version}")
+                    if node.id not in self.nodes:
+                        print("new node")
+                        self.nodes[node.id] = node
+                        print(f"Name: {node.name} IP: {node.ip} Node: {node.type} {node.id} Version: {node.version}")
+                    if self.nodes[node.id] != node:
+                        print("update node")
+                        self.nodes[node.id] = node
+                        print(f"Name: {node.name} IP: {node.ip} Node: {node.type} {node.id} Version: {node.version}")
 
 class WTray(object):
     def __init__(self, url):
