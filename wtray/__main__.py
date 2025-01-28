@@ -72,21 +72,21 @@ class WTray(object):
     """WLED System Tray"""
     def __init__(self, url):
         self.url = url
-        self.state = False
         menu = pystray.Menu(
-            pystray.MenuItem('checked', self.__checked, checked=lambda item: self.state),
-            pystray.MenuItem('info', self.__info),
-            pystray.MenuItem('state', self.__state),
-            pystray.MenuItem('effects', self.__effects),
-            pystray.MenuItem('palettes', self.__palettes),
-            pystray.MenuItem('on', self.__on),
-            pystray.MenuItem('off', self.__off),
+            pystray.MenuItem('nodes', pystray.Menu(
+                pystray.MenuItem(url, pystray.Menu(
+                    pystray.MenuItem('info', self.__info),
+                    pystray.MenuItem('state', self.__state),
+                    pystray.MenuItem('effects', self.__effects),
+                    pystray.MenuItem('palettes', self.__palettes),
+                    pystray.MenuItem('on', self.__on),
+                    pystray.MenuItem('off', self.__off)
+                ))
+            )),
             pystray.MenuItem('exit', self.__exit))
         self.icon = pystray.Icon("WLED", Image.open("wtray/icon.ico"), menu=menu)
         self.discovery = Discovery()
         self.discovery.start()
-    def __checked(self, icon, item):
-        self.state = not self.state
     def __get(self, path):
         headers = {"Content-Type": "application/json"}
         r = requests.get(f"{self.url}/json/{path}", headers=headers)
