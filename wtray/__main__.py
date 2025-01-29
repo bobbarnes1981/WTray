@@ -40,8 +40,9 @@ class Node(object):
 
 class Discovery(object):
     """Class to listen to node udp messages"""
-    def __init__(self):
+    def __init__(self, discovered_func):
         threading.Thread.__init__(self)
+        self._discovered_func = discovered_func
         self._logger = logging.getLogger(Discovery.__name__)
         self._running = False
         self._nodes= {}
@@ -79,6 +80,7 @@ class Discovery(object):
                         self._logger.info(f"[UPDATE] {node}")
                         self._nodes[node.id] = node
         self._running = False
+        self._discovered_func()
         self._logger.info("discover end")
 
 class MenuItemWithTag(pystray.MenuItem):
@@ -91,7 +93,7 @@ class WTray(object):
     """WLED System Tray"""
     def __init__(self):
         self._logger = logging.getLogger(WTray.__name__)
-        self.discovery = Discovery()
+        self.discovery = Discovery(self.__discovered)
         menu = pystray.Menu(
             pystray.MenuItem('discover', lambda icon, item: self.__discover()),
             pystray.MenuItem('nodes', pystray.Menu(lambda: (
@@ -120,10 +122,10 @@ class WTray(object):
         self._logger.info(r)
         self._logger.info(r.json())
         return r.json()
+    def __discovered(self):
+        self.icon.update_menu()
     def __discover(self):
         threading.Thread(target=self.discovery.start).start()
-        time.sleep(32)
-        self.icon.update_menu()
     def __info(self, icon, item):
         self.__get(item.tag, "info")
     def __state(self, icon, item):
