@@ -45,6 +45,9 @@ class Discovery(object):
         self._logger = logging.getLogger(Discovery.__name__)
         self._running = False
         self._nodes= {}
+    def getNodes(self):
+        """Get the discovered nodes"""
+        return self._nodes
     def stop(self):
         """Stop the task"""
         self._running = False
@@ -78,28 +81,29 @@ class Discovery(object):
         self._running = False
         self._logger.info("discover end")
 
+class MenuItemWithTag(pystray.MenuItem):
+    """Wrapper for MenuItem with tag assigned"""
+    def __init__(self, text, action, checked=None, radio=False, default=False, visible=True, enabled=True, tag=None):
+        pystray.MenuItem.__init__(self, text, action, checked, radio, default, visible, enabled)
+        self.tag = tag
+
 class WTray(object):
     """WLED System Tray"""
     def __init__(self):
         self._logger = logging.getLogger(WTray.__name__)
         self.discovery = Discovery()
-        dummy_nodes = {
-            207: Node(b'\xff\x01\xc0\xa8\x01\xcfComputer\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\xcf\x00\x00\x00\x00')
-        }
-        for node in dummy_nodes.items():
-            self._logger.info(node)
         menu = pystray.Menu(
             pystray.MenuItem('discover', lambda icon, item: self.__discover()),
             pystray.MenuItem('nodes', pystray.Menu(lambda: (
-                pystray.MenuItem(dummy_nodes[id].ip, pystray.Menu(
-                    pystray.MenuItem('info', lambda icon, item: self.__info(dummy_nodes[id].ip)),
-                    pystray.MenuItem('state', lambda icon, item: self.__state(dummy_nodes[id].ip)),
-                    pystray.MenuItem('effects', lambda icon, item: self.__effects(dummy_nodes[id].ip)),
-                    pystray.MenuItem('palettes', lambda icon, item: self.__palettes(dummy_nodes[id].ip)),
-                    pystray.MenuItem('on', lambda icon, item: self.__on(dummy_nodes[id].ip)),
-                    pystray.MenuItem('off', lambda icon, item: self.__off(dummy_nodes[id].ip))
+                pystray.MenuItem(node.name, pystray.Menu(
+                    MenuItemWithTag('info', self.__info, tag=node.ip),
+                    MenuItemWithTag('state', self.__state, tag=node.ip),
+                    MenuItemWithTag('effects', self.__effects, tag=node.ip),
+                    MenuItemWithTag('palettes', self.__palettes, tag=node.ip),
+                    MenuItemWithTag('on', self.__on, tag=node.ip),
+                    MenuItemWithTag('off', self.__off, tag=node.ip)
                 ))
-                for id in dummy_nodes
+                for id, node in self.discovery.getNodes().items()
             ))),
             pystray.MenuItem('exit', lambda icon, item: self.__exit()))
         self.icon = pystray.Icon("WLED", Image.open("wtray/icon.ico"), menu=menu)
@@ -118,18 +122,20 @@ class WTray(object):
         return r.json()
     def __discover(self):
         threading.Thread(target=self.discovery.start).start()
-    def __info(self, ip):
-        self.__get(ip, "info")
-    def __state(self, ip):
-        self.__get(ip, "state")
-    def __effects(self, ip):
-        self.__get(ip, "effects")
-    def __palettes(self, ip):
-        self.__get(ip, "palettes")
-    def __on(self, ip):
-        self.__post(ip, "state", {"on": True})
-    def __off(self, ip):
-        self.__post(ip, "state", {"on": False})
+        time.sleep(32)
+        self.icon.update_menu()
+    def __info(self, icon, item):
+        self.__get(item.tag, "info")
+    def __state(self, icon, item):
+        self.__get(item.tag, "state")
+    def __effects(self, icon, item):
+        self.__get(item.tag, "effects")
+    def __palettes(self, icon, item):
+        self.__get(item.tag, "palettes")
+    def __on(self, icon, item):
+        self.__post(item.tag, "state", {"on": True})
+    def __off(self, icon, item):
+        self.__post(item.tag, "state", {"on": False})
     def __exit(self):
         self.discovery.stop()
         self.icon.stop()
