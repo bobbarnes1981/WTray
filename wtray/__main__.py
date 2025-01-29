@@ -1,13 +1,16 @@
 """Main WTray module"""
 import json
+import logging
 import select
 import socket
 import threading
+import time
 import pystray
 import requests
-import time
 
 from PIL import Image
+
+logging.basicConfig(level=logging.INFO)
 
 class Node(object):
     """Class representing the node udp information"""
@@ -32,11 +35,14 @@ class Node(object):
         if not isinstance(other, Node):
             return False
         return self.ip == other.ip and self.name == other.name and self.state == other.state and self.type == other.type and self.id == other.id and self.version == other.version
+    def __str__(self):
+        return f"Name: {self.name} IP: {self.ip} Node: {self.type} {self.id} Version: {self.version} State: {self.state}"
 
 class Discovery(threading.Thread):
     """Thread to listen to node udp messages"""
     def __init__(self):
         threading.Thread.__init__(self)
+        self._logger = logging.getLogger(Discovery.__name__)
         self._running = False
         self._nodes= {}
     def stop(self):
@@ -51,7 +57,7 @@ class Discovery(threading.Thread):
         client.setsockopt(socket.SOL_SOCKET, socket.SO_BROADCAST, 1)
         client.bind(("", 65506))
         socket_timeout = 0.5
-        print("discover start")
+        self._logger.info("discover start")
         t = time.time()
         sysinfo_timeout = 31 # sysinfo is sent over UDP every 30 seconds
         while self._running and time.time() - t < sysinfo_timeout:
@@ -63,62 +69,66 @@ class Discovery(threading.Thread):
                 if msg_token == 255 and msg_id == 1:
                     node = Node(data)
                     if node.id not in self._nodes:
-                        print("new node")
+                        self._logger.info(f"[NEW] {node}")
                         self._nodes[node.id] = node
-                        print(f"Name: {node.name} IP: {node.ip} Node: {node.type} {node.id} Version: {node.version} State: {node.state}")
                     if self._nodes[node.id] != node:
-                        print("update node")
+                        self._logger.info(f"[UPDATE] {node}")
                         self._nodes[node.id] = node
-                        print(f"Name: {node.name} IP: {node.ip} Node: {node.type} {node.id} Version: {node.version} State: {node.state}")
         self._running = False
-        print("discover end")
+        self._logger.info("discover end")
 
 class WTray(object):
     """WLED System Tray"""
-    def __init__(self, url):
+    def __init__(self):
+        self._logger = logging.getLogger(WTray.__name__)
         self.discovery = Discovery()
+        dummy_nodes = {
+            207: Node(b'\xff\x01\xc0\xa8\x01\xcfComputer\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\xcf\x00\x00\x00\x00')
+        }
+        for node in dummy_nodes.items():
+            self._logger.info(node)
         menu = pystray.Menu(
             pystray.MenuItem('discover', lambda icon, item: self.__discover()),
             pystray.MenuItem('nodes', pystray.Menu(lambda: (
-                pystray.MenuItem(url, pystray.Menu(
-                    pystray.MenuItem('info', lambda icon, item: self.__info(url)),
-                    pystray.MenuItem('state', lambda icon, item: self.__state(url)),
-                    pystray.MenuItem('effects', lambda icon, item: self.__effects(url)),
-                    pystray.MenuItem('palettes', lambda icon, item: self.__palettes(url)),
-                    pystray.MenuItem('on', lambda icon, item: self.__on(url)),
-                    pystray.MenuItem('off', lambda icon, item: self.__off(url))
+                pystray.MenuItem(dummy_nodes[id].ip, pystray.Menu(
+                    pystray.MenuItem('info', lambda icon, item: self.__info(dummy_nodes[id].ip)),
+                    pystray.MenuItem('state', lambda icon, item: self.__state(dummy_nodes[id].ip)),
+                    pystray.MenuItem('effects', lambda icon, item: self.__effects(dummy_nodes[id].ip)),
+                    pystray.MenuItem('palettes', lambda icon, item: self.__palettes(dummy_nodes[id].ip)),
+                    pystray.MenuItem('on', lambda icon, item: self.__on(dummy_nodes[id].ip)),
+                    pystray.MenuItem('off', lambda icon, item: self.__off(dummy_nodes[id].ip))
                 ))
-                for url in {url: None}
+                for id in dummy_nodes
             ))),
             pystray.MenuItem('exit', lambda icon, item: self.__exit()))
         self.icon = pystray.Icon("WLED", Image.open("wtray/icon.ico"), menu=menu)
         self.__discover()
-    def __get(self, url, path):
+    def __get(self, ip, path):
         headers = {"Content-Type": "application/json"}
-        r = requests.get(f"{url}/json/{path}", headers=headers)
-        print(r)
-        print(r.json())
+        r = requests.get(f"http://{ip}/json/{path}", headers=headers)
+        self._logger.info(r)
+        self._logger.info(r.json())
         return r.json()
-    def __post(self, url, path, data):
+    def __post(self, ip, path, data):
         headers = {"Content-Type": "application/json"}
-        r = requests.post(f"{url}/json/{path}", headers=headers, data=json.dumps(data))
-        print(r)
-        print(r.json())
+        r = requests.post(f"http://{ip}/json/{path}", headers=headers, data=json.dumps(data))
+        self._logger.info(r)
+        self._logger.info(r.json())
         return r.json()
     def __discover(self):
         self.discovery.start()
-    def __info(self, url):
-        self.__get(url, "info")
-    def __state(self, url):
-        self.__get(url, "state")
-    def __effects(self, url):
-        self.__get(url, "effects")
-    def __palettes(self, url):
-        self.__get(url, "palettes")
-    def __on(self, url):
-        self.__post(url, "state", {"on": True})
-    def __off(self, url):
-        self.__post(url, "state", {"on": False})
+    def __info(self, ip):
+        self.__get(ip, "info")
+    def __state(self, ip):
+        self.__get(ip, "state")
+    def __effects(self, ip):
+        self.__get(ip, "effects")
+    def __palettes(self, ip):
+        self.__get(ip, "palettes")
+    def __on(self, ip):
+        self.__post(ip, "state", {"on": True})
+    def __off(self, ip):
+        self.__post(ip, "state", {"on": False})
     def __exit(self):
         self.discovery.stop()
         self.icon.stop()
@@ -127,4 +137,4 @@ class WTray(object):
         self.icon.run()
 
 
-WTray("http://192.168.1.207").run()
+WTray().run()
