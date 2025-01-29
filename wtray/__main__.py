@@ -38,17 +38,18 @@ class Node(object):
     def __str__(self):
         return f"Name: {self.name} IP: {self.ip} Node: {self.type} {self.id} Version: {self.version} State: {self.state}"
 
-class Discovery(threading.Thread):
-    """Thread to listen to node udp messages"""
+class Discovery(object):
+    """Class to listen to node udp messages"""
     def __init__(self):
         threading.Thread.__init__(self)
         self._logger = logging.getLogger(Discovery.__name__)
         self._running = False
         self._nodes= {}
     def stop(self):
-        """Stop the thread"""
+        """Stop the task"""
         self._running = False
-    def run(self, *args, **kwargs):
+    def start(self):
+        """Start the task"""
         self._running = True
         client = socket.socket(socket.AF_INET, socket.SOCK_DGRAM, socket.IPPROTO_UDP)
         client.setblocking(0)
@@ -116,7 +117,7 @@ class WTray(object):
         self._logger.info(r.json())
         return r.json()
     def __discover(self):
-        self.discovery.start()
+        threading.Thread(target=self.discovery.start).start()
     def __info(self, ip):
         self.__get(ip, "info")
     def __state(self, ip):
