@@ -5,6 +5,7 @@ import socket
 import threading
 import pystray
 import requests
+import time
 
 from PIL import Image
 
@@ -37,7 +38,7 @@ class Discovery(threading.Thread):
     def __init__(self):
         threading.Thread.__init__(self)
         self._running = False
-        self.nodes= {}
+        self._nodes= {}
     def stop(self):
         """Stop the thread"""
         self._running = False
@@ -50,8 +51,10 @@ class Discovery(threading.Thread):
         client.setsockopt(socket.SOL_SOCKET, socket.SO_BROADCAST, 1)
         client.bind(("", 65506))
         socket_timeout = 0.5
-        print("discover")
-        while self._running:
+        print("discover start")
+        t = time.time()
+        sysinfo_timeout = 31 # sysinfo is sent over UDP every 30 seconds
+        while self._running and time.time() - t < sysinfo_timeout:
             ready = select.select([client], [], [], socket_timeout)
             if ready[0]:
                 data, addr = client.recvfrom(1024)
@@ -59,61 +62,66 @@ class Discovery(threading.Thread):
                 msg_id = data[1] # 1
                 if msg_token == 255 and msg_id == 1:
                     node = Node(data)
-                    if node.id not in self.nodes:
+                    if node.id not in self._nodes:
                         print("new node")
-                        self.nodes[node.id] = node
+                        self._nodes[node.id] = node
                         print(f"Name: {node.name} IP: {node.ip} Node: {node.type} {node.id} Version: {node.version} State: {node.state}")
-                    if self.nodes[node.id] != node:
+                    if self._nodes[node.id] != node:
                         print("update node")
-                        self.nodes[node.id] = node
+                        self._nodes[node.id] = node
                         print(f"Name: {node.name} IP: {node.ip} Node: {node.type} {node.id} Version: {node.version} State: {node.state}")
+        self._running = False
+        print("discover end")
 
 class WTray(object):
     """WLED System Tray"""
     def __init__(self, url):
-        self.url = url
-        menu = pystray.Menu(
-            pystray.MenuItem('nodes', pystray.Menu(
-                pystray.MenuItem(url, pystray.Menu(
-                    pystray.MenuItem('info', self.__info),
-                    pystray.MenuItem('state', self.__state),
-                    pystray.MenuItem('effects', self.__effects),
-                    pystray.MenuItem('palettes', self.__palettes),
-                    pystray.MenuItem('on', self.__on),
-                    pystray.MenuItem('off', self.__off)
-                ))
-            )),
-            pystray.MenuItem('exit', self.__exit))
-        self.icon = pystray.Icon("WLED", Image.open("wtray/icon.ico"), menu=menu)
         self.discovery = Discovery()
+        menu = pystray.Menu(
+            pystray.MenuItem('discover', lambda icon, item: self.__discover()),
+            pystray.MenuItem('nodes', pystray.Menu(lambda: (
+                pystray.MenuItem(url, pystray.Menu(
+                    pystray.MenuItem('info', lambda icon, item: self.__info(url)),
+                    pystray.MenuItem('state', lambda icon, item: self.__state(url)),
+                    pystray.MenuItem('effects', lambda icon, item: self.__effects(url)),
+                    pystray.MenuItem('palettes', lambda icon, item: self.__palettes(url)),
+                    pystray.MenuItem('on', lambda icon, item: self.__on(url)),
+                    pystray.MenuItem('off', lambda icon, item: self.__off(url))
+                ))
+                for url in {url: None}
+            ))),
+            pystray.MenuItem('exit', lambda icon, item: self.__exit()))
+        self.icon = pystray.Icon("WLED", Image.open("wtray/icon.ico"), menu=menu)
+        self.__discover()
+    def __get(self, url, path):
+        headers = {"Content-Type": "application/json"}
+        r = requests.get(f"{url}/json/{path}", headers=headers)
+        print(r)
+        print(r.json())
+        return r.json()
+    def __post(self, url, path, data):
+        headers = {"Content-Type": "application/json"}
+        r = requests.post(f"{url}/json/{path}", headers=headers, data=json.dumps(data))
+        print(r)
+        print(r.json())
+        return r.json()
+    def __discover(self):
         self.discovery.start()
-    def __get(self, path):
-        headers = {"Content-Type": "application/json"}
-        r = requests.get(f"{self.url}/json/{path}", headers=headers)
-        print(r)
-        print(r.json())
-        return r.json()
-    def __post(self, path, data):
-        headers = {"Content-Type": "application/json"}
-        r = requests.post(f"{self.url}/json/{path}", headers=headers, data=json.dumps(data))
-        print(r)
-        print(r.json())
-        return r.json()
-    def __info(self, icon, item):
-        self.__get("info")
-    def __state(self, icon, item):
-        self.__get("state")
-    def __effects(self, icon, item):
-        self.__get("effects")
-    def __palettes(self, icon, item):
-        self.__get("palettes")
-    def __on(self, icon, item):
-        self.__post("state", {"on": True})
-    def __off(self, icon, item):
-        self.__post("state", {"on": False})
-    def __exit(self, icon, item):
+    def __info(self, url):
+        self.__get(url, "info")
+    def __state(self, url):
+        self.__get(url, "state")
+    def __effects(self, url):
+        self.__get(url, "effects")
+    def __palettes(self, url):
+        self.__get(url, "palettes")
+    def __on(self, url):
+        self.__post(url, "state", {"on": True})
+    def __off(self, url):
+        self.__post(url, "state", {"on": False})
+    def __exit(self):
         self.discovery.stop()
-        icon.stop()
+        self.icon.stop()
     def run(self):
         """Run the application"""
         self.icon.run()
