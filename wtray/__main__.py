@@ -41,14 +41,13 @@ class Node(object):
 class Discovery(object):
     """Class to listen to node udp messages"""
     def __init__(self, discovered_func):
-        threading.Thread.__init__(self)
         self._discovered_func = discovered_func
         self._logger = logging.getLogger(Discovery.__name__)
         self._running = False
         self._nodes= {}
-    def getNodes(self):
+    def get_sorted_nodes(self):
         """Get the discovered nodes"""
-        return self._nodes
+        return sorted((self._nodes.values()), key=lambda n: n.name)
     def stop(self):
         """Stop the task"""
         self._running = False
@@ -106,7 +105,7 @@ class WTray(object):
                     MenuItemWithTag('on', self.__on, tag=node.ip),
                     MenuItemWithTag('off', self.__off, tag=node.ip)
                 ))
-                for id, node in self.discovery.getNodes().items()
+                for node in self.discovery.get_sorted_nodes()
             ))),
             pystray.MenuItem('exit', lambda icon, item: self.__exit()))
         self.icon = pystray.Icon("WLED", Image.open("wtray/icon.ico"), menu=menu)
