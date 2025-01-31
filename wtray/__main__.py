@@ -79,6 +79,7 @@ class Discovery(object):
                     if self._nodes[node.id] != node:
                         self._logger.info(f"[UPDATE] {node}")
                         self._nodes[node.id] = node
+                    self._discovered_func()
         self._running = False
         self._discovered_func()
         self._logger.info("discover end")
