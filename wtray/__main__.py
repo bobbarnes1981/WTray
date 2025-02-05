@@ -5,6 +5,8 @@ import select
 import socket
 import threading
 import time
+import os
+import pickle
 import pystray
 import requests
 
@@ -48,6 +50,17 @@ class Discovery(object):
     def get_sorted_nodes(self):
         """Get the discovered nodes"""
         return sorted((self._nodes.values()), key=lambda n: n.name)
+    def set_nodes(self, nodes):
+        """Set the nodes"""
+        for node in nodes:
+            self.__append_node(node)
+    def __append_node(self, node):
+        if node.id not in self._nodes:
+            self._logger.info(f"[NEW] {node}")
+            self._nodes[node.id] = node
+        if self._nodes[node.id] != node:
+            self._logger.info(f"[UPDATE] {node}")
+            self._nodes[node.id] = node
     def stop(self):
         """Stop the task"""
         self._running = False
@@ -72,12 +85,7 @@ class Discovery(object):
                 msg_id = data[1] # 1
                 if msg_token == 255 and msg_id == 1:
                     node = Node(data)
-                    if node.id not in self._nodes:
-                        self._logger.info(f"[NEW] {node}")
-                        self._nodes[node.id] = node
-                    if self._nodes[node.id] != node:
-                        self._logger.info(f"[UPDATE] {node}")
-                        self._nodes[node.id] = node
+                    self.__append_node(node)
                     self._discovered_func()
         self._running = False
         self._discovered_func()
@@ -91,9 +99,15 @@ class MenuItemWithTag(pystray.MenuItem):
 
 class WTray(object):
     """WLED System Tray"""
+    config_cache = "nodes.bin"
     def __init__(self):
         self._logger = logging.getLogger(WTray.__name__)
         self.discovery = Discovery(self.__discovered)
+        nodes = []
+        if os.path.isfile(self.config_cache):
+            with open(self.config_cache, 'rb') as config:
+                nodes = pickle.load(config)
+        self.discovery.set_nodes(nodes)
         menu = pystray.Menu(
             pystray.MenuItem('discover', lambda icon, item: self.__discover()),
             pystray.MenuItem('nodes', pystray.Menu(lambda: (
@@ -124,6 +138,8 @@ class WTray(object):
         return r.json()
     def __discovered(self):
         self.icon.update_menu()
+        with open(self.config_cache, 'wb') as config:
+            pickle.dump(self.discovery.get_sorted_nodes(), config, pickle.HIGHEST_PROTOCOL)
     def __discover(self):
         threading.Thread(target=self.discovery.start).start()
     def __info(self, icon, item):
