@@ -108,22 +108,39 @@ class WTray(object):
             with open(self.config_cache, 'rb') as config:
                 nodes = pickle.load(config)
         self.discovery.set_nodes(nodes)
-        menu = pystray.Menu(
-            pystray.MenuItem('discover', lambda icon, item: self.__discover()),
-            pystray.MenuItem('nodes', pystray.Menu(lambda: (
-                pystray.MenuItem(node.name, pystray.Menu(
-                    MenuItemWithTag('info', self.__info, tag=node.ip),
-                    MenuItemWithTag('state', self.__state, tag=node.ip),
-                    MenuItemWithTag('effects', self.__effects, tag=node.ip),
-                    MenuItemWithTag('palettes', self.__palettes, tag=node.ip),
-                    MenuItemWithTag('on', self.__on, tag=node.ip),
-                    MenuItemWithTag('off', self.__off, tag=node.ip)
-                ))
-                for node in self.discovery.get_sorted_nodes()
-            ))),
-            pystray.MenuItem('exit', lambda icon, item: self.__exit()))
+        
+        #menu = pystray.Menu(
+        #    pystray.MenuItem('Discover', self.__click_discover()),
+        #    pystray.MenuItem('Nodes', pystray.Menu(lambda: (
+        #        pystray.MenuItem(node.name, pystray.Menu(
+        #            MenuItemWithTag('Info', self.__click_info, tag=node.ip),
+        #            MenuItemWithTag('State', self.__click_state, tag=node.ip),
+        #            MenuItemWithTag('Effects', self.__click_effects, tag=node.ip),
+        #            MenuItemWithTag('Palettes', self.__click_palettes, tag=node.ip),
+        #            MenuItemWithTag('On', self.__click_on, tag=node.ip),
+        #            MenuItemWithTag('Off', self.__click_off, tag=node.ip)
+        #        ))
+        #        for node in self.discovery.get_sorted_nodes()
+        #    ))),
+        #    pystray.MenuItem('Exit', self.__click_exit()))
+        
+        menu = pystray.Menu(lambda: (n for n in self.__get_menu_items()))
+
         self.icon = pystray.Icon("WLED", Image.open("wtray/icon.ico"), menu=menu)
         self.__discover()
+
+    def __get_menu_items(self):
+        dis = [pystray.MenuItem('Discover', self.__click_discover)]
+        nodes = [(pystray.MenuItem(node.name, pystray.Menu(
+                MenuItemWithTag('Info', self.__click_info, tag=node.ip),
+                MenuItemWithTag('State', self.__click_state, tag=node.ip),
+                MenuItemWithTag('Effects', self.__click_effects, tag=node.ip),
+                MenuItemWithTag('Palettes', self.__click_palettes, tag=node.ip),
+                MenuItemWithTag('On', self.__click_on, tag=node.ip),
+                MenuItemWithTag('Off', self.__click_off, tag=node.ip)
+            ))) for node in self.discovery.get_sorted_nodes()]
+        ex = [pystray.MenuItem('Exit', self.__click_exit)]
+        return dis + nodes + ex
     def __get(self, ip, path):
         headers = {"Content-Type": "application/json"}
         r = requests.get(f"http://{ip}/json/{path}", headers=headers)
@@ -140,26 +157,32 @@ class WTray(object):
         self.icon.update_menu()
         with open(self.config_cache, 'wb') as config:
             pickle.dump(self.discovery.get_sorted_nodes(), config, pickle.HIGHEST_PROTOCOL)
+
+    def __click_discover(self, icon, item):
+        self.__discover()
+    def __click_info(self, icon, item):
+        self.__get(item.tag, "info")
+    def __click_state(self, icon, item):
+        self.__get(item.tag, "state")
+    def __click_effects(self, icon, item):
+        self.__get(item.tag, "effects")
+    def __click_palettes(self, icon, item):
+        self.__get(item.tag, "palettes")
+    def __click_on(self, icon, item):
+        self.__post(item.tag, "state", {"on": True})
+    def __click_off(self, icon, item):
+        self.__post(item.tag, "state", {"on": False})
+    def __click_exit(self, icon, item):
+        self.__exit()
+
     def __discover(self):
         threading.Thread(target=self.discovery.start).start()
-    def __info(self, icon, item):
-        self.__get(item.tag, "info")
-    def __state(self, icon, item):
-        self.__get(item.tag, "state")
-    def __effects(self, icon, item):
-        self.__get(item.tag, "effects")
-    def __palettes(self, icon, item):
-        self.__get(item.tag, "palettes")
-    def __on(self, icon, item):
-        self.__post(item.tag, "state", {"on": True})
-    def __off(self, icon, item):
-        self.__post(item.tag, "state", {"on": False})
     def __exit(self):
         self.discovery.stop()
         self.icon.stop()
+
     def run(self):
         """Run the application"""
         self.icon.run()
-
 
 WTray().run()
