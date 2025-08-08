@@ -56,10 +56,10 @@ class Discovery(object):
             self.__append_node(node)
     def __append_node(self, node):
         if node.id not in self._nodes:
-            self._logger.info(f"[NEW] {node}")
+            self._logger.info("[NEW] %s", node)
             self._nodes[node.id] = node
         if self._nodes[node.id] != node:
-            self._logger.info(f"[UPDATE] {node}")
+            self._logger.info("[UPDATE] %s", node)
             self._nodes[node.id] = node
     def stop(self):
         """Stop the task"""
@@ -81,6 +81,7 @@ class Discovery(object):
             ready = select.select([client], [], [], socket_timeout)
             if ready[0]:
                 data, addr = client.recvfrom(1024)
+                self._logger.info("Received from: %s", addr)
                 msg_token = data[0] # 255
                 msg_id = data[1] # 1
                 if msg_token == 255 and msg_id == 1:
@@ -103,12 +104,13 @@ class WTray(object):
     def __init__(self):
         self._logger = logging.getLogger(WTray.__name__)
         self.discovery = Discovery(self.__discovered)
+        self._timeout = 5
         nodes = []
         if os.path.isfile(self.config_cache):
             with open(self.config_cache, 'rb') as config:
                 nodes = pickle.load(config)
         self.discovery.set_nodes(nodes)
-        
+    
         #menu = pystray.Menu(
         #    pystray.MenuItem('Discover', self.__click_discover()),
         #    pystray.MenuItem('Nodes', pystray.Menu(lambda: (
@@ -123,7 +125,7 @@ class WTray(object):
         #        for node in self.discovery.get_sorted_nodes()
         #    ))),
         #    pystray.MenuItem('Exit', self.__click_exit()))
-        
+
         menu = pystray.Menu(lambda: (n for n in self.__get_menu_items()))
 
         self.icon = pystray.Icon("WLED", Image.open("wtray/icon.ico"), menu=menu)
@@ -143,13 +145,13 @@ class WTray(object):
         return dis + nodes + ex
     def __get(self, ip, path):
         headers = {"Content-Type": "application/json"}
-        r = requests.get(f"http://{ip}/json/{path}", headers=headers)
+        r = requests.get(f"http://{ip}/json/{path}", headers=headers, timeout=self._timeout)
         self._logger.info(r)
         self._logger.info(r.json())
         return r.json()
     def __post(self, ip, path, data):
         headers = {"Content-Type": "application/json"}
-        r = requests.post(f"http://{ip}/json/{path}", headers=headers, data=json.dumps(data))
+        r = requests.post(f"http://{ip}/json/{path}", headers=headers, data=json.dumps(data), timeout=self._timeout)
         self._logger.info(r)
         self._logger.info(r.json())
         return r.json()
